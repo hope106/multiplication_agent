@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Noto Sans KR', sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #f5f7fa;
+  color: #333;
+}
+
+.chat-container {
+  height: calc(100vh - 140px);
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.message {
+  margin-bottom: 16px;
+  max-width: 80%;
+  border-radius: 10px;
+  padding: 10px 15px;
+  position: relative;
+  clear: both;
+}
+
+.user-message {
+  background-color: #e3f2fd;
+  float: right;
+  border-radius: 15px 15px 0 15px;
+}
+
+.system-message {
+  background-color: #f1f1f1;
+  float: left;
+  border-radius: 15px 15px 15px 0;
+}
+
+.problem-message {
+  background-color: #e8f5e9;
+  float: left;
+  border-radius: 15px 15px 15px 0;
+}
+
+.answer-message {
+  background-color: #fff3e0;
+  float: left;
+  border-radius: 15px 15px 15px 0;
+}
+
+.message-sender {
+  font-size: 0.75rem;
+  color: #666;
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.message-content {
+  word-break: break-word;
+}
+
+.message-time {
+  font-size: 0.7rem;
+  color: #999;
+  text-align: right;
+  margin-top: 4px;
+}
+
+.agent-status {
+  display: flex;
+  align-items: center;
+  margin-right: 16px;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+.status-active {
+  background-color: #4caf50;
+}
+
+.status-inactive {
+  background-color: #9e9e9e;
+}
+
+.status-error {
+  background-color: #f44336;
+} 
