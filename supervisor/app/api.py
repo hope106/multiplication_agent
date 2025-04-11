@@ -11,6 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Optional
 import json
 from datetime import datetime
+import os
+from pathlib import Path
+import logging
+import sys
 
 from shared.schemas import (
     SupervisorRequest,
@@ -20,27 +24,45 @@ from shared.schemas import (
     AnswerResponse,
     WebSocketMessage,
 )
+from shared.logger import get_agent_logger
+from shared.websocket_manager import ConnectionManager
+
+# 프로젝트 루트 경로 추가
+root_path = Path(__file__).parent.parent.parent
+sys.path.append(str(root_path))
+
+# 로깅 설정
+logger = get_agent_logger("supervisor")
 
 app = FastAPI(title="구구단 슈퍼바이저 에이전트")
 
 # CORS 설정 - 개발 환경에서는 모든 출처 허용
 origins = [
+    "http://localhost",
     "http://localhost:8080",  # 프론트엔드 개발 서버
     "http://127.0.0.1:8080",
     "http://localhost:5173",  # Vite 기본 포트
     "http://127.0.0.1:5173",
+    "http://localhost:3000",  # 프론트엔드 다른 가능한 포트
+    "http://127.0.0.1:3000",
+    "*",  # 개발 환경에서는 모든 출처 허용
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # 개발 환경에서는 모든 도메인 허용
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 웹소켓 연결 클라이언트 관리
-connected_clients: List[WebSocket] = []
+# 웹소켓 연결 관리자 초기화
+manager = ConnectionManager()
+
+# 로그 디렉토리 설정
+log_dir = os.path.join(root_path, "logs")
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
 
 
 @app.get("/health")
@@ -102,8 +124,7 @@ async def websocket_endpoint(websocket: WebSocket):
     Args:
         websocket (WebSocket): 웹소켓 연결 객체
     """
-    await websocket.accept()
-    connected_clients.append(websocket)
+    await manager.connect(websocket)
     
     try:
         while True:
@@ -122,30 +143,29 @@ async def websocket_endpoint(websocket: WebSocket):
                     request = SupervisorRequest(message=user_message)
                     response = await process_request(request)
                     
-                    await broadcast_message({
+                    await manager.broadcast({
                         "type": "system_message",
                         "content": response.message,
                         "sender": "supervisor",
                         "timestamp": datetime.now().isoformat()
                     })
             except json.JSONDecodeError:
-                await websocket.send_text(json.dumps({
+                await manager.send_personal_message({
                     "type": "system_message",
                     "content": "잘못된 형식의 메시지입니다.",
                     "sender": "system",
                     "timestamp": datetime.now().isoformat()
-                }))
+                }, websocket)
             except Exception as e:
-                await websocket.send_text(json.dumps({
+                await manager.send_personal_message({
                     "type": "system_message",
                     "content": f"요청 처리 중 오류가 발생했습니다: {str(e)}",
                     "sender": "system",
                     "timestamp": datetime.now().isoformat()
-                }))
+                }, websocket)
     except WebSocketDisconnect:
-        # 연결 종료 시 목록에서 제거
-        if websocket in connected_clients:
-            connected_clients.remove(websocket)
+        # 연결 종료 처리
+        manager.disconnect(websocket)
 
 
 async def broadcast_message(message: Dict):
@@ -155,13 +175,7 @@ async def broadcast_message(message: Dict):
     Args:
         message (Dict): 전송할 메시지
     """
-    for client in connected_clients:
-        try:
-            await client.send_text(json.dumps(message))
-        except Exception:
-            # 연결 오류 발생 시 목록에서 제거
-            if client in connected_clients:
-                connected_clients.remove(client)
+    await manager.broadcast(message)
 
 
 def parse_request(message: str) -> tuple[Optional[int], Optional[int]]:
@@ -247,6 +261,7 @@ async def process_gugudan(table: int, stop_value: Optional[int] = None):
                 answer_data = answer_response.json()
                 calculation = answer_data.get("calculation", "")
                 answer = answer_data.get("answer", 0)
+                explanation = answer_data.get("explanation", "")
                 
                 # 답변 브로드캐스트
                 await broadcast_message({
@@ -255,6 +270,15 @@ async def process_gugudan(table: int, stop_value: Optional[int] = None):
                     "sender": "agent2",
                     "timestamp": datetime.now().isoformat()
                 })
+                
+                # 설명이 있으면 설명 브로드캐스트
+                if explanation:
+                    await broadcast_message({
+                        "type": "explanation",
+                        "content": explanation,
+                        "sender": "agent2",
+                        "timestamp": datetime.now().isoformat()
+                    })
                 
                 # 종료 조건 확인
                 if stop_value and answer >= stop_value:
@@ -313,3 +337,37 @@ async def process_gugudan(table: int, stop_value: Optional[int] = None):
             "sender": "supervisor",
             "timestamp": datetime.now().isoformat()
         }) 
+
+@app.get("/logs/{agent_name}")
+async def get_agent_logs(agent_name: str):
+    """
+    에이전트 로그를 조회합니다.
+    
+    Args:
+        agent_name: 에이전트 이름 (supervisor, agent1, agent2)
+        
+    Returns:
+        dict: 로그 내용을 포함하는 응답
+    """
+    # 에이전트 이름 검증
+    if agent_name not in ["supervisor", "agent1", "agent2"]:
+        raise HTTPException(status_code=400, detail="유효하지 않은 에이전트 이름입니다.")
+    
+    # 로그 파일 경로
+    log_file = os.path.join(log_dir, f"{agent_name}.log")
+    
+    # 로그 파일이 존재하는지 확인
+    if not os.path.exists(log_file):
+        return {"log_content": f"{agent_name} 로그 파일이 아직 생성되지 않았습니다."}
+    
+    try:
+        with open(log_file, "r", encoding="utf-8") as f:
+            # 마지막 100줄만 읽기
+            lines = f.readlines()
+            last_lines = lines[-100:] if len(lines) > 100 else lines
+            log_content = "".join(last_lines)
+            
+        return {"log_content": log_content}
+    except Exception as e:
+        logger.error(f"로그 파일 읽기 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"로그 파일 읽기 오류: {str(e)}") 

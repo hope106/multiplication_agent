@@ -6,6 +6,7 @@
 import httpx
 from fastapi import FastAPI, HTTPException
 from typing import Dict, Optional
+from fastapi.middleware.cors import CORSMiddleware
 
 from shared.schemas import (
     ProblemRequest,
@@ -15,6 +16,15 @@ from shared.schemas import (
 )
 
 app = FastAPI(title="구구단 문제 생성기 에이전트")
+
+# CORS 설정 추가
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 개발 환경에서는 모든 도메인 허용
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 에이전트 상태 저장
 state: Dict[str, any] = {
@@ -113,7 +123,7 @@ async def solve_problem(problem: AnswerRequest) -> AnswerResponse:
     Raises:
         HTTPException: 답변기 에이전트 통신 오류 시
     """
-    agent2_url = "http://localhost:6000/answer"
+    agent2_url = "http://localhost:6001/answer"
     
     try:
         async with httpx.AsyncClient() as client:

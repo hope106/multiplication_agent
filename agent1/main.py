@@ -12,6 +12,12 @@ from dotenv import load_dotenv
 # 현재 파일 위치를 기준으로 프로젝트 루트 경로를 추가
 sys.path.append(str(Path(__file__).parent.parent))
 
+# 공통 로깅 모듈 임포트
+from shared.logger import get_agent_logger
+
+# 로깅 설정
+logger = get_agent_logger("agent1")
+
 # .env 파일 로드 (있는 경우)
 load_dotenv()
 
@@ -25,7 +31,7 @@ def main():
     """
     문제 생성기 에이전트 서버 실행 함수
     """
-    print(f"🚀 문제 생성기 에이전트 서버를 {HOST}:{PORT}에서 시작합니다...")
+    logger.info(f"🚀 문제 생성기 에이전트 서버를 {HOST}:{PORT}에서 시작합니다...")
     uvicorn.run(
         "app.api:app",
         host=HOST,

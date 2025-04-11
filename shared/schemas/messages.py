@@ -42,6 +42,8 @@ class AnswerResponse(BaseModel):
     """답변기로부터 문제 생성기로의 응답 메시지"""
     answer: int = Field(..., description="계산된 결과값")
     calculation: str = Field(..., description="전체 계산식 (예: '3×4=12')")
+    explanation: Optional[str] = Field(None, description="계산 결과에 대한 교육적 설명")
+    visual_representation: Optional[str] = Field(None, description="구구단 계산의 시각적 표현")
 
 
 class StatusUpdate(BaseModel):
@@ -57,7 +59,7 @@ class StatusUpdate(BaseModel):
 
 class WebSocketMessage(BaseModel):
     """웹소켓을 통한 메시지"""
-    type: Literal["user_message", "system_message", "problem", "answer", "status_update"] = Field(
+    type: Literal["user_message", "system_message", "problem", "answer", "status_update", "explanation"] = Field(
         ..., description="메시지 유형"
     )
     content: str = Field(..., description="메시지 내용")

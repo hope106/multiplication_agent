@@ -6,21 +6,17 @@
 import uvicorn
 import os
 import sys
-import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
 # 현재 파일 위치를 기준으로 프로젝트 루트 경로를 추가
 sys.path.append(str(Path(__file__).parent.parent))
 
+# 공통 로깅 모듈 임포트
+from shared.logger import get_agent_logger
+
 # 로깅 설정
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
+logger = get_agent_logger("supervisor")
 
 # .env 파일 로드 (있는 경우)
 load_dotenv()
@@ -35,8 +31,8 @@ def main():
     """
     슈퍼바이저 에이전트 서버 실행 함수
     """
-    print(f"🚀 슈퍼바이저 에이전트 서버를 {HOST}:{PORT}에서 시작합니다...")
-    print(f"WebSocket 엔드포인트: ws://{HOST}:{PORT}/ws")
+    logger.info(f"🚀 슈퍼바이저 에이전트 서버를 {HOST}:{PORT}에서 시작합니다...")
+    logger.info(f"WebSocket 엔드포인트: ws://{HOST}:{PORT}/ws")
     uvicorn.run(
         "app.api:app",
         host=HOST,

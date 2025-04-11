@@ -4,7 +4,18 @@ import { ref } from 'vue';
 export const useMessageStore = defineStore('messages', () => {
   const messages = ref([]);
   const isConnected = ref(false);
+  const showExplanations = ref(true);
   let socket = null;
+
+  // 초기화 시 로컬 스토리지에서 설명 표시 설정 로드
+  try {
+    const savedPreference = localStorage.getItem('showExplanations');
+    if (savedPreference !== null) {
+      showExplanations.value = JSON.parse(savedPreference);
+    }
+  } catch (e) {
+    console.error('설명 표시 설정 로드 오류:', e);
+  }
 
   // 웹소켓 연결 초기화
   function initWebSocket() {
@@ -16,7 +27,9 @@ export const useMessageStore = defineStore('messages', () => {
     
     // 웹소켓 연결 수정 - 절대 경로로 변경
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.hostname}:8000/ws`;
+    const wsHost = 'localhost'; // 명시적으로 localhost 지정
+    const wsPort = '8000';
+    const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/ws`;
     
     socket = new WebSocket(wsUrl);
     console.log(`웹소켓 연결 URL: ${wsUrl}`);
@@ -48,10 +61,15 @@ export const useMessageStore = defineStore('messages', () => {
       isConnected.value = false;
       addMessage({
         type: 'system_message',
-        content: '연결이 종료되었습니다. 페이지를 새로고침하여 다시 연결해주세요.',
+        content: '연결이 종료되었습니다. 자동으로 재연결을 시도합니다...',
         sender: 'system',
         timestamp: new Date().toISOString()
       });
+      
+      // 3초 후 자동 재연결 시도
+      setTimeout(() => {
+        initWebSocket();
+      }, 3000);
     };
 
     socket.onerror = (error) => {
@@ -59,11 +77,30 @@ export const useMessageStore = defineStore('messages', () => {
       isConnected.value = false;
       addMessage({
         type: 'system_message',
-        content: '연결 오류가 발생했습니다. 나중에 다시 시도해주세요.',
+        content: '연결 오류가 발생했습니다. 자동으로 재연결을 시도합니다...',
         sender: 'system',
         timestamp: new Date().toISOString()
       });
+      
+      // 소켓 닫기 시도
+      try {
+        socket.close();
+      } catch (e) {
+        console.error("소켓 닫기 오류:", e);
+      }
+      
+      // 3초 후 재연결 시도
+      setTimeout(() => {
+        initWebSocket();
+      }, 3000);
     };
+  }
+
+  // 설명 표시 여부 토글
+  function toggleExplanations() {
+    showExplanations.value = !showExplanations.value;
+    // 로컬 스토리지에 설정 저장
+    localStorage.setItem('showExplanations', JSON.stringify(showExplanations.value));
   }
 
   // 메시지 추가
@@ -71,6 +108,22 @@ export const useMessageStore = defineStore('messages', () => {
     // 타임스탬프가 없으면 현재 시간 추가
     if (!message.timestamp) {
       message.timestamp = new Date().toISOString();
+    }
+    
+    // 메시지에 고유 ID 추가
+    message.id = `msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    
+    // 설명 메시지인 경우 부모 메시지와 연결
+    if (message.type === 'explanation' && messages.value.length > 0) {
+      // 가장 최근 답변 메시지 찾기
+      const lastAnswerIndex = [...messages.value].reverse()
+        .findIndex(m => m.type === 'answer');
+      
+      if (lastAnswerIndex >= 0) {
+        const actualIndex = messages.value.length - 1 - lastAnswerIndex;
+        message.parentId = messages.value[actualIndex].id;
+        messages.value[actualIndex].hasExplanation = true;
+      }
     }
     
     messages.value.push(message);
@@ -103,8 +156,10 @@ export const useMessageStore = defineStore('messages', () => {
   return {
     messages,
     isConnected,
+    showExplanations,
     initWebSocket,
     addMessage,
-    sendMessage
+    sendMessage,
+    toggleExplanations
   };
 }); 

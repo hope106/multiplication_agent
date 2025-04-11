@@ -30,7 +30,7 @@ export const useAgentStore = defineStore('agents', () => {
     
     try {
       // 에이전트2(답변기) 상태 확인
-      await checkAgent('agent2', 'http://localhost:6000/health');
+      await checkAgent('agent2', 'http://localhost:6001/health');
     } catch (error) {
       agent2.value = false;
       console.error('답변기 상태 확인 실패:', error);
@@ -42,7 +42,7 @@ export const useAgentStore = defineStore('agents', () => {
   // 개별 에이전트 상태 확인
   async function checkAgent(agentName, url) {
     try {
-      const response = await axios.get(url, { timeout: 3000 });
+      const response = await axios.get(url, { timeout: 10000 });
       if (response.status === 200) {
         if (agentName === 'supervisor') {
           supervisor.value = true;

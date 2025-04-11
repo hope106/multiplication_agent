@@ -7,11 +7,14 @@ import pytest
 from fastapi.testclient import TestClient
 import sys
 from pathlib import Path
+import os
+import asyncio
+import unittest.mock as mock
 
 # 상위 디렉터리 경로를 모듈 검색 경로에 추가
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from agent2.app.api import app
+from agent2.app.api import app, get_explanation
 
 
 @pytest.fixture
@@ -56,6 +59,8 @@ def test_calculate_answer_success(client):
     result = response.json()
     assert result["answer"] == 56
     assert result["calculation"] == "7×8=56"
+    # 설명 필드가 존재하는지 확인
+    assert "explanation" in result
 
 
 def test_calculate_answer_with_different_numbers(client):
@@ -79,6 +84,8 @@ def test_calculate_answer_with_different_numbers(client):
         result = response.json()
         assert result["answer"] == case["expected_answer"]
         assert result["calculation"] == case["expected_calculation"]
+        # 설명 필드가 존재하는지 확인
+        assert "explanation" in result
 
 
 def test_calculate_answer_invalid_format(client):
@@ -98,4 +105,58 @@ def test_calculate_answer_invalid_format(client):
     
     for case in invalid_cases:
         response = client.post("/answer", json=case)
-        assert response.status_code == 400  # Bad Request 응답 코드 확인 
+        assert response.status_code == 400  # Bad Request 응답 코드 확인
+
+
+@pytest.mark.asyncio
+async def test_get_explanation():
+    """
+    Claude API를 통한 설명 생성 테스트
+    
+    ANTHROPIC_API_KEY 환경 변수가 설정되어 있지 않으면 스킵됩니다.
+    """
+    # API 키가 있는지 확인
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        pytest.skip("ANTHROPIC_API_KEY 환경 변수가 설정되지 않았습니다.")
+    
+    # 테스트 데이터
+    calculation = "5×6=30"
+    answer = 30
+    
+    # API 호출
+    explanation = await get_explanation(calculation, answer)
+    
+    # 응답 검증
+    assert explanation is not None
+    assert len(explanation) > 0
+    assert isinstance(explanation, str)
+    
+    
+@pytest.mark.asyncio
+async def test_get_explanation_with_mock():
+    """
+    Mock을 사용하여 Claude API 호출 없이 설명 생성 기능 테스트
+    """
+    # 테스트 데이터
+    calculation = "5×6=30"
+    answer = 30
+    mock_explanation = "5를 6번 더하면 30이 됩니다. 5+5+5+5+5+5=30 이에요."
+    
+    # httpx.AsyncClient.post 메서드를 모킹
+    with mock.patch('httpx.AsyncClient.post') as mock_post:
+        # 모의 응답 설정
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "content": [{"text": mock_explanation}]
+        }
+        mock_post.return_value = mock_response
+        
+        # API 호출
+        explanation = await get_explanation(calculation, answer)
+        
+        # 응답 검증
+        assert explanation == mock_explanation
+        # post 메서드가 호출되었는지 확인
+        mock_post.assert_called_once() 
